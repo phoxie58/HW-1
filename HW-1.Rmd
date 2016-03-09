@@ -1,16 +1,20 @@
 ---
 title: "MATH 216 Homework 1"
-author: "WRITE YOUR NAME HERE"
+author: "Phil Hoxie"
 output: html_document
 ---
 
-```{r, echo=FALSE, message=FALSE, cache=TRUE}
+```{r, echo=FALSE, message=FALSE}
 # DO NOT EDIT THIS SECTION
 
 # Load packages
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(plotly))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(corrplot))
+
 
 # Load data sets. Note this assumes this .Rmd files is in the same directory as
 # the .csv files.
@@ -30,18 +34,14 @@ states <- read.csv("data/states.csv", stringsAsFactors = FALSE) %>%
 
 
 
-
-
 ## Admistrative:
 
 Please indicate
 
-* Who you collaborated with:
-* Roughly how much time you spent on this HW:
-* What gave you the most trouble:
-* Any comments you have:
-
-
+* Who you collaborated with: Sanket Vadlamani
+* Roughly how much time you spent on this HW: 10 hrs
+* What gave you the most trouble: dates
+* Any comments you have: sometimes it knit, sometimes it didn't. I wouldn't change anything in that chunk, but the "parse_date_time" funtion did not always run
 
 
 
@@ -52,11 +52,55 @@ Please indicate
     + the y-axis should be the proportion.
 * Which seasons did we tend to see the most and least delays of > 30 minutes.
 
-```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+```{r, echo=FALSE, message=FALSE, results='hide', fig.width=12, fig.height=6}
+
+flights$date <- parse_date_time(flights$date, "ymd_hms", truncated = 3)
+new.date <- time(flights$date)
+new.date <- as.Date(flights$date)
+form.new.date <- cbind(flights$date, year = year(new.date), month = month(new.date), day = day(new.date))
 
 ```
 
+```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+flights.full <- bind_cols(flights, as.data.frame(form.new.date))
 
+flights.full <- flights.full %>% 
+  mutate(delay = ifelse(dep_delay > 30, "yes", "no"))
+
+
+flights_per_month <- flights.full %>% 
+  group_by(month) %>% 
+  tally() %>% 
+  rename(flights_per_month = n)
+
+
+month_flight_status <- flights.full %>% 
+  group_by(month, delay) %>% 
+  tally() %>% 
+  rename(month_flight_status = n)
+
+
+prop.flights.delayed <- left_join(month_flight_status, flights_per_month, by="month") %>% 
+  mutate(prop = round(month_flight_status/flights_per_month, 3))
+prop.flights.delayed <- filter(prop.flights.delayed, delay == "yes")
+
+
+month.names <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+prop.flights.delayed <- bind_cols(prop.flights.delayed, as.data.frame(month.names))
+prop.flights.delayed
+
+p <- plot_ly(
+  data = prop.flights.delayed,
+  x = month.names,
+  y = prop,
+  title = "Flights Delayed by Month",
+  type = "bar") %>% 
+  layout( title = "Flights Delayed by Month")
+p
+
+```
+
+It is clear that departure delays are seasonal. When we consider the proportion of flights delayed longer than 30 minutes, it appears that the proportion increases from January to july. This could be due to increased demand during vacation season. There is aditionally a spike in December, most likely due to the holidays. 
 
 
 
@@ -66,12 +110,28 @@ Some people prefer flying on older planes.  Even though they aren't as nice,
 they tend to have more room.  Which airlines should these people favor?
 
 ```{r, echo=FALSE, fig.width=12, fig.height=6}
+planes_carrier <- right_join(planes, flights, by = "plane")
 
+planes_carrier <- distinct(flights, plane) %>% 
+  left_join(planes, flights, by = "plane")
+
+plane.age.by.carrier <- planes_carrier %>% 
+  group_by(carrier) %>% 
+  summarise(avg.age = mean(year, na.rm = TRUE)) %>% 
+  mutate(avg.age.years = 2016 - avg.age) %>% 
+  arrange(desc(avg.age.years))
+
+r <- plot_ly(
+  data = plane.age.by.carrier,
+  x = carrier,
+  y = avg.age.years,
+  title = "Average Plane Age by Carrier",
+  type = "bar") %>% 
+  layout( title = "Average Plane Age by Carrier")
+r
 ```
 
-
-
-
+Anilyzing the average age of each airline's entire fleet shows that Envoy Air (MQ) and American Airlines (AA) have the oldest planes. By contrast, Jet Blue (B6) had the newest planes, which are likely to have much less legroom.
 
 
 
@@ -80,12 +140,54 @@ they tend to have more room.  Which airlines should these people favor?
 * What states did listed Southwest Airlines flights tend to fly to?
 * What states did all Southwest Airlines flights tend to fly to?
 
+When counting the flights on South West out of Huston, there are two ways to count. The first way is by simply counting every flight flown each day, not eliminating duplicates. For example, if three flights a day were flown from Huston to Denver, they would be counted as three seperate flights. The alternative would be to only count the unique routs that South West flies, so all three, hypothetical, flights to Denver would be counted as only one unique flight. 
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+sw.flights <- filter(flights, carrier=="WN")
+sw.flights <- left_join(sw.flights, airports, by=c("dest"="iata"))
 
+sw.flights.per.state <- sw.flights %>% 
+  group_by(state) %>% 
+  tally() %>% 
+  rename(num.of.flights.by.state = n) 
+sw.flights.per.state <- arrange(sw.flights.per.state, desc(num.of.flights.by.state))
+
+sw <- plot_ly(
+  data = sw.flights.per.state,
+  x = state,
+  y = num.of.flights.by.state,
+  title = "Number of South West Flights by State",
+  type = "bar") %>% 
+  layout( title = "Number of South West Flights by State")
+sw
+```
+
+The vast majority of South West's flights out of Huston remained within the state of Texas (over 17 thousand flights in total). The next most traveled to state was Florida, but with only 3992 flights. The rest of the states traveled to descended by distance from Huston. 
+
+```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+## SWA no duplicates
+
+distinct.sw.flights <- distinct(sw.flights, dest) %>% 
+  group_by(state) %>% 
+  tally() %>% 
+  rename(flights.per.state = n)
+
+
+distinct.sw.flights <- arrange(distinct.sw.flights, desc(flights.per.state))
+
+
+sw.u <- plot_ly(
+  data = distinct.sw.flights,
+  x = state,
+  y = flights.per.state,
+  title = "Number of Unique South West Flights by State",
+  type = "bar") %>% 
+  layout( title = "Number of Unique South West Flights by State")
+sw.u
 ```
 
 
+When considering only unique routs, Texas is still the most traveled to state, with Florida coming in second. Most of the difference between these two counts is made up by the high volume of local flights South West opperates within Texas. 
 
 
 
@@ -94,10 +196,35 @@ they tend to have more room.  Which airlines should these people favor?
 What weather patterns are associated with the biggest departure delays?
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+flights.full$date.alt <- ymd_hm(paste(flights.full$year, flights.full$month, flights.full$day, flights.full$hour, flights.full$minute, sep = "-"))
+flights.full$date.alt <- round_date(flights.full$date.alt, unit = "hour")
+weather$date.alt <- ymd_h(paste(weather$date, weather$hour, sep = " "))
 
+flight.conditions <- left_join(flights.full, weather, by = "date.alt")
+
+flight.cond.weather <- flight.conditions %>% 
+  group_by(conditions) %>% 
+  tally() %>% 
+  rename(num.hours = n) %>% 
+  arrange(desc(num.hours)) %>% 
+  mutate(num.days = round(num.hours/360, 1))
+
+flight.cond.delay <- flight.conditions %>% 
+  group_by(conditions) %>% 
+  summarise(avg.delay = mean(dep_delay, na.rm = TRUE)) %>% 
+  arrange(desc(avg.delay))
+
+fcd <- plot_ly(
+  flight.cond.delay, 
+  x = conditions, 
+  y = avg.delay, 
+  text = paste("Conditions: ", conditions),
+  type = "bar") %>% 
+  layout(title = "Average Departure Delay by Observed Weather Condition")
+fcd
 ```
 
-
+Freezing rain caused, on average, much larger departure delays than any other category of weather condition. Freezing rain and light freezing rain caused, on average, 144 and 110 minute departure delays, whereas thunderstorms only caused about 24min of delay on average. 
 
 
 
@@ -108,5 +235,66 @@ carrier flies to from Houston in the month of July.  Consider the `month()`
 function from the `lubridate` package.
 
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
+airports.states <- left_join(airports, states, by = "state")
+airports.states.flights <- left_join(flights.full, airports.states, by=c("dest"="iata"))
 
+july.flights <- airports.states.flights %>%
+  filter(month == 7) %>%
+  group_by(carrier) %>%
+  tally() %>%
+  rename(total.flights.july=n)
+
+july.flights.NE <- airports.states.flights %>%
+  filter(month == 7, region=="NE") %>%
+  group_by(carrier) %>%
+  tally() %>%
+  rename(NE=n)
+
+july.flights.south <- airports.states.flights %>%
+  filter(month == 7, region=="south") %>%
+  group_by(carrier) %>%
+  tally() %>%
+  rename(south=n)
+
+july.flights.west <- airports.states.flights %>%
+  filter(month == 7, region=="west") %>%
+  group_by(carrier) %>%
+  tally() %>%
+  rename(west=n)
+
+july.flights.midwest <- airports.states.flights %>%
+  filter(month == 7, region=="midwest") %>%
+  group_by(carrier) %>%
+  tally() %>%
+  rename(midwest=n)
+
+
+total_1<- full_join(july.flights.NE,july.flights,by="carrier")
+total_2<- full_join(july.flights.west,total_1,by="carrier")
+total_3<- full_join(july.flights.south, total_2, by="carrier")
+flights.july.region<- full_join(july.flights.midwest, total_3, by="carrier")
+
+
+flight.july.region.prop <- flights.july.region %>%
+  mutate(prop_NE = round(NE/total.flights.july,3)) %>%
+  mutate(prop_south = round(south/total.flights.july,3)) %>%
+  mutate(prop_west = round(west/total.flights.july,3)) %>%
+  mutate(prop_midwest = round(midwest/total.flights.july,3)) %>%
+  select(carrier,prop_NE,prop_south,prop_west,prop_midwest)
+
+
+flight.july.region.prop.l <- gather(flight.july.region.prop, "region", "proportion", 2:5, na.rm = FALSE) 
+flight.july.region.prop.l 
+
+## Graph
+
+fjr <- ggplot(flight.july.region.prop.l, aes(x=region, y=proportion, fill = region)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ carrier, nrow = 5) +
+  ggtitle("Regional Destinations by Airline") +
+  xlab("Region") +
+  ylab("Proportion of total Flights")
+fjr
 ```
+
+This faceted grouping of bar charts is quite interesting. The most striking insight, is that not all arlines fly from Huston to other airports in the south. Moreover, only United (CO), Sky West (OO), and South West (WN) flew to all four regions out of Huston. 
