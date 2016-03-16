@@ -95,7 +95,7 @@ p <- plot_ly(
   y = prop,
   title = "Flights Delayed by Month",
   type = "bar") %>% 
-  layout( title = "Flights Delayed by Month")
+  layout( title = "Flights Delayed by Month", yaxis = list(title = "Prop. Flights Delayed (>30min)"))
 p
 
 ```
@@ -117,17 +117,26 @@ planes_carrier <- distinct(flights, plane) %>%
 
 plane.age.by.carrier <- planes_carrier %>% 
   group_by(carrier) %>% 
-  summarise(avg.age = mean(year, na.rm = TRUE)) %>% 
+  summarise(avg.age = mean(year, na.rm = TRUE), med.age = median(2016 - year, na.rm = TRUE)) %>% 
   mutate(avg.age.years = 2016 - avg.age) %>% 
   arrange(desc(avg.age.years))
+num.planes <- planes_carrier %>% 
+  group_by(carrier) %>% 
+  tally() %>% 
+  rename(num.planes = n)
+
+plane.age.by.carrier.num <- full_join(plane.age.by.carrier, num.planes, by = "carrier")
+
+
 
 r <- plot_ly(
-  data = plane.age.by.carrier,
+  data = plane.age.by.carrier.num,
   x = carrier,
   y = avg.age.years,
+  text = paste("num.planes: ", num.planes, "med.age: ", med.age, "avg.age.years: ", avg.age.years),
   title = "Average Plane Age by Carrier",
   type = "bar") %>% 
-  layout( title = "Average Plane Age by Carrier")
+  layout( title = "Average Plane Age by Carrier", yaxis = list(title = "Average Age of Fleet (Years)"))
 r
 ```
 
@@ -167,7 +176,7 @@ The vast majority of South West's flights out of Huston remained within the stat
 ```{r, echo=FALSE, message=FALSE, fig.width=12, fig.height=6}
 ## SWA no duplicates
 
-distinct.sw.flights <- distinct(sw.flights, dest) %>% 
+distinct.sw.flights <- distinct(sw.flights, flight) %>% 
   group_by(state) %>% 
   tally() %>% 
   rename(flights.per.state = n)
@@ -220,11 +229,11 @@ fcd <- plot_ly(
   y = avg.delay, 
   text = paste("Conditions: ", conditions),
   type = "bar") %>% 
-  layout(title = "Average Departure Delay by Observed Weather Condition")
+  layout(title = "Average Departure Delay by Observed Weather Condition", yaxis = list(title = "Average Delay (min)"))
 fcd
 ```
 
-Freezing rain caused, on average, much larger departure delays than any other category of weather condition. Freezing rain and light freezing rain caused, on average, 144 and 110 minute departure delays, whereas thunderstorms only caused about 24min of delay on average. 
+Freezing rain is associated with much larger departure delays than any other category of weather condition. When there was freezing rain and light freezing rain there were, on average, 144 and 110 minute departure delays, whereas thunderstorms only were associated with about 24min of delay on average. 
 
 
 
